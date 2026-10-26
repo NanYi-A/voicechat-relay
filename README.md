@@ -171,42 +171,58 @@ test_e2e.py                端到端测试
 
 ## 快速开始（他人 clone 后如何部署成自己的系统）
 
-> 本系统需要**三端都跑起来**：手机 App、云端中继、家中带 GPU 的电脑。
-> 好消息是：**客户端的中继地址与 API Key 都是运行时在设置页填写的，不需要改任何代码。**
+> 本系统需要**三端都跑起来**才能用：
+>
+> ```
+> ┌─────────────┐    HTTPS/WSS     ┌──────────────┐    HTTP     ┌──────────────────┐
+> │  手机 App    │ ←─────────────→ │  云端中继     │ ←────────→ │ 家中电脑 GPU     │
+> │ (Flutter)   │   文字/音频/指令  │  (FastAPI)   │            │ CosyVoice2 + 守护 │
+> └─────────────┘                  └──────────────┘            └──────────────────┘
+>                                          ↑                              │
+>                                          └────── WebSocket 反向连接 ─────┘
+>                                                （电脑主动连云，因为家里没公网 IP）
+> ```
+>
+> **好消息：客户端的中继地址、DeepSeek Key、账号密码全部在设置页运行时填写，一行代码都不用改。**
 
 ### 0. 需要改哪些配置（总览）
 
 | 配置项 | 在哪里改 | 是否必填 | 说明 |
 |---|---|---|---|
 | 中继地址 | **App 设置页运行时填写** | — | 不需要改代码 |
-| DeepSeek API Key | **App 设置页运行时填写** | **必填** | 由 `secure_storage` 保管，不落代码 |
-| `COMPUTER_TOKEN` | 中继 + 电脑守护进程的环境变量 | **必填** | 电脑与中继的共享密钥，两端必须一致 |
-| `COMPUTER_WS_URL` | 守护进程环境变量 | **必填** | 守护进程要反连的中继地址 |
-| 模型权重路径 | 守护进程启动参数 | **必填** | CosyVoice2 权重位置（需自行下载） |
+| DeepSeek API Key | **App 设置页运行时填写** | **必填** | 由 `secure_storage` 加密保管，不落代码 |
+| 用户名 / 密码 | **App 设置页运行时填写** | **必填** | 密码至少 6 位；首次用会自动注册 |
+| `COMPUTER_TOKEN` | 中继 + 电脑守护进程的环境变量 | **必填** | 电脑与中继的共享密钥，**两端必须一致** |
+| `RELAY_WS` | 守护进程环境变量 | **必填** | 守护进程要反连的中继地址（`wss://`） |
+| `API_BASE` | 守护进程环境变量 | 可选 | 本地 CosyVoice API 地址，默认 `http://127.0.0.1:9996` |
+| 模型权重路径 | CosyVoice 官方启动参数 | **必填** | CosyVoice2 权重位置（需自行下载，不入库） |
 
-> **本仓库不提供 APK**：Flutter 应用需自备 Flutter SDK 与 CosyVoice2 权重才能构建，且中继地址与 DeepSeek Key 都由使用者在设置页自行填写。
+> **本仓库不提供 APK**：Flutter 应用需要自备 Flutter SDK，CosyVoice2 权重数 GB 且受许可证约束不入库，
+> 而且中继地址与 DeepSeek Key 都由使用者在设置页自行填写 —— 所以从源码构建是唯一正确的路径。
 
 ---
 
 ### 第一部分：准备 CosyVoice2 模型（本地 GPU 推理）
 
-本项目的 TTS 跑在你自己的电脑上，模型权重**不入库**（数 GB，且受许可证约束）。
+本项目的 TTS 跑在**你自己的电脑**上，模型权重不入库（数 GB，且受许可证约束）。
+
+**硬件要求**：NVIDIA GPU + **≥8GB 显存**（本项目的分段加载方案就是为 8GB 卡设计的；显存更低请看"关键工程决策"第 1 节）。
 
 ```bash
-# 克隆官方仓库（以 CosyVoice2 为例）
+# 1. 克隆官方仓库
 git clone https://github.com/FunAudioLLM/CosyVoice.git
 cd CosyVoice
 
-# 按官方说明创建环境并安装依赖
+# 2. 创建环境（官方推荐 Python 3.10）
 conda create -n cosyvoice python=3.10 -y
 conda activate cosyvoice
+
+# 3. 安装依赖
 pip install -r requirements.txt
 
-# 下载预训练权重（放到 pretrained_models/ 下）
-# 详见官方 README 的 Model Download 部分
+# 4. 下载预训练权重 —— 详见官方 README 的 "Model Download" 一节
+#    权重放到 pretrained_models/ 下，本项目用 CosyVoice2-0.5B
 ```
-
-环境要求：**NVIDIA GPU + ≥8GB 显存**（本项目的分段加载方案就是为 8GB 卡设计的）。
 
 ---
 
@@ -214,8 +230,9 @@ pip install -r requirements.txt
 
 #### 2.1 上传并安装
 
+把仓库里的 `relay/` 目录传到服务器，例如 `/www/wwwroot/voicechat-relay/`：
+
 ```bash
-# 把 relay/ 传到服务器，如 /www/wwwroot/voicechat-relay/
 cd /www/wwwroot/voicechat-relay
 
 python3 -m venv venv
@@ -223,17 +240,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> `requirements.txt` 在仓库根目录（不在 `relay/` 里），如果只传了 `relay/` 目录，记得把根目录那个也一起传上去，或者手动装：`pip install fastapi uvicorn python-multipart websockets requests websocket-client`。
+
 #### 2.2 配置共享密钥
 
 ```bash
-# 电脑守护进程反连 /ws/computer 的共享密钥
-# 必须配置，否则中继拒绝任何电脑连接
+# 电脑守护进程反连 /ws/computer 用的共享密钥
+# 必须配置，否则中继会拒绝一切电脑连接
 export COMPUTER_TOKEN=$(openssl rand -hex 32)
 echo "共享密钥：$COMPUTER_TOKEN"
 ```
 
-> 也可以写在项目根目录的 `.computer_token` 文件（首行）。优先级：环境变量 > `.computer_token` 文件。
-> **两者都不配置时，`/ws/computer` 会拒绝一切连接**（安全默认，绝不允许公网零鉴权）。
+> 也可以写在项目根目录的 `.computer_token` 文件（首行）。优先级：**环境变量 > `.computer_token` 文件**。
+> **两者都不配置时，`/ws/computer` 会拒绝一切连接** —— 这是刻意的安全默认，绝不允许公网零鉴权的服务。
+
+**把这个 token 记下来**，第三部分的守护进程要用同一个值。
 
 #### 2.3 启动
 
@@ -243,7 +264,7 @@ uvicorn main:app --host 127.0.0.1 --port 8001 --workers 1
 
 > **必须 `--workers 1`**：本服务用 SQLite 存数据，多进程并发写会锁冲突。
 
-supervisor 配置（`/etc/supervisor/conf.d/voicechat.conf`）：
+用 supervisor 保持常驻（`/etc/supervisor/conf.d/voicechat.conf`）：
 
 ```ini
 [program:voicechat]
@@ -254,7 +275,11 @@ autorestart=true
 environment=COMPUTER_TOKEN="你的token"
 ```
 
-#### 2.4 Nginx 反代（必须 HTTPS/WSS）
+```bash
+supervisorctl reread && supervisorctl update && supervisorctl restart voicechat
+```
+
+#### 2.4 Nginx 反代（**必须 HTTPS/WSS**）
 
 ```nginx
 server {
@@ -289,19 +314,30 @@ server {
 certbot --nginx -d relay.yourdomain.com
 ```
 
+> **为什么必须 HTTPS/WSS**：守护进程要用 `wss://` 建立长连接，明文 `ws://` 会被很多网络与系统策略拦截；
+> 而且指令与音频明文传输有泄露风险。
+
+**验证中继起来了**：
+
+```bash
+curl https://relay.yourdomain.com/api/status
+# 期望返回 JSON，里面 devices / computer 在线状态等字段
+```
+
 ---
 
 ### 第三部分：启动电脑端（两个进程）
 
-在你家里那台带 GPU 的电脑上，需要**两个进程**同时运行：
+在你家里那台带 GPU 的电脑上，需要**两个进程同时运行**：
 
 ```
-CosyVoice API 服务 (官方 api/api.py)  ←─HTTP─→  守护进程 daemon.py  ←─WS反连─→  云中继
-      :9996                                      :8001 ←─WS反连─→  云中继
+CosyVoice API 服务 (官方 api/api.py)  ←─HTTP─→  守护进程 daemon.py
+      :9996                                      │
+                                                 └──── WS 反向连接 ────→ 云中继
 ```
 
-> **为什么是两个进程**：本仓库的 `guard/daemon.py` 不直接加载模型，而是通过 HTTP 调用
-> CosyVoice 官方的 `api/api.py`（OpenAI 风格端点）。这样做的好处是**模型加载与业务逻辑解耦**：
+> **为什么是两个进程**：本仓库的 `guard/daemon.py` **不直接加载模型**，而是通过 HTTP 调用
+> CosyVoice 官方的 `api/api.py`（OpenAI 风格端点）。好处是**模型加载与业务逻辑解耦**：
 > 官方 API 负责推理与音色注册，守护进程只负责"反连中继 + 串行调度 + 音色持久化"，
 > 官方 API 崩了不影响守护进程与中继的连接状态。
 
@@ -309,16 +345,15 @@ CosyVoice API 服务 (官方 api/api.py)  ←─HTTP─→  守护进程 daemon.
 
 ```bash
 cd /path/to/CosyVoice
-
-# 激活环境
 conda activate cosyvoice
 
 # 启动官方 API 服务（默认端口 9996）
-# 权重路径由 CosyVoice 官方脚本的参数指定，按官方 README 填写
 python api/api.py --port 9996 --model_dir /path/to/CosyVoice/pretrained_models/CosyVoice2-0.5B
 ```
 
-验证：
+> `--model_dir` 指向**你实际下载权重的地方**。第一次启动要加载模型，等 30 秒左右。
+
+**验证**：
 
 ```bash
 curl http://127.0.0.1:9996/health
@@ -331,11 +366,11 @@ curl http://127.0.0.1:9996/health
 cd /path/to/voicechat-relay
 pip install requests websocket-client
 
-# 反连地址（必须是 ws:// 或 wss://）
+# 反连地址（必须是 ws:// 或 wss://，线上用 wss://）
 export RELAY_WS=wss://relay.yourdomain.com/ws/computer
-# 共享密钥，与云中继一致
+# 共享密钥 —— 必须和第二部分 2.2 设定的完全一致
 export COMPUTER_TOKEN=your-strong-token-here
-# 本地 CosyVoice API 地址
+# 本地 CosyVoice API 地址（一般不用改）
 export API_BASE=http://127.0.0.1:9996
 
 python guard/daemon.py
@@ -348,15 +383,15 @@ python guard/daemon.py
 3. 开机后自动重新注册音色（CosyVoice 音色注册是内存态，`api.py` 重启即丢失）
 4. 用**串行任务队列**处理合成请求（CosyVoice 并发下会崩）
 
-验证连接成功：
+**验证连接成功**：
 
 ```bash
 curl https://relay.yourdomain.com/api/status
 # 应能看到已连接的电脑
 ```
 
-> **注意变量名**：守护进程读的是 `RELAY_WS`（不是 `COMPUTER_WS_URL`），
-> 中继读的是 `COMPUTER_TOKEN`，两者必须一致。变量名可在 `guard/daemon.py` 顶部查到。
+> ⚠️ **变量名容易搞错**：守护进程读的是 **`RELAY_WS`**（不是 `COMPUTER_WS_URL`），
+> 中继读的是 **`COMPUTER_TOKEN`**。两个变量的准确名字都能在 `guard/daemon.py` 顶部看到。
 
 ---
 
@@ -364,40 +399,57 @@ curl https://relay.yourdomain.com/api/status
 
 #### 4.1 环境
 
-| 依赖 | 版本 |
-|---|---|
-| Flutter | 3.x（推荐 3.24+） |
-| Dart | 随 Flutter |
-| Android SDK | compileSdk 34 / minSdk 24 |
+| 依赖 | 版本要求 | 说明 |
+|---|---|---|
+| Flutter | **3.35+** | `pubspec.yaml` 要求 Dart `^3.11.4`，对应 Flutter 3.35 及以上 |
+| Dart | 随 Flutter | 不用单独装 |
+| Android SDK | compileSdk 34+ / minSdk 24 | Android 7.0 及以上 |
 
 ```bash
+# 检查版本（flutter --version 里会带出 Dart 版本）
+flutter --version
+
 cd app
 flutter pub get
 ```
 
-#### 4.2 运行
+> 如果 `flutter pub get` 报 "requires SDK version ^3.11.4"，说明你的 Flutter 太旧了，升级 Flutter 即可。
+
+#### 4.2 运行与出包
 
 ```bash
-flutter run          # 连真机
-flutter build apk    # 出包
+cd app
+
+flutter run                  # 连真机跑（会热重载，改代码即时生效）
+flutter build apk            # 出 release 包（体积最小）
+flutter build apk --debug    # 要调试的话
 ```
 
-#### 4.3 首次启动要填的三样东西
+产物：`app/build/app/outputs/flutter-apk/app-release.apk`
 
-App 首次启动会进入设置页，**全部在运行时填写，不需要改任何代码**：
+#### 4.3 首次启动要填的四样东西
+
+App 首次启动进入设置页，**全部在运行时填写，不需要改任何代码**：
 
 | 项 | 填什么 | 说明 |
 |---|---|---|
-| **中继地址** | `https://relay.yourdomain.com` | 你自己的中继域名（注意是 https，不要带路径） |
-| **DeepSeek API Key** | 你在 platform.deepseek.com 申请的 Key | 运行时输入，由 `secure_storage` 加密保存 |
-| **电脑连接状态** | 自动检测 | 显示守护进程是否在线 |
+| **DeepSeek API Key** * | 在 <https://platform.deepseek.com> 申请的 Key | 运行时输入，`secure_storage` 加密保存，代码里从没有硬编码过 |
+| **云端地址** * | `https://relay.yourdomain.com` | 你的中继域名。**必须是 https，不要带路径** |
+| **用户名** * | 自己起一个 | 首次填会自动注册账号 |
+| **密码** * | 至少 6 位 | 与用户名一起注册 |
 
-> 仓库中 `app/lib/screens/setup_screen.dart` 的默认地址已替换为占位符 `your-server-ip`，你也可以直接改这个默认值再编译。
+> ⚠️ **云端地址别忘了改协议**：代码里的默认值是 `http://your-server-ip:8001`（占位符）。
+> 你要填成 `https://relay.yourdomain.com`，**既要把 `your-server-ip` 换掉，也要把 `http` 改成 `https`**，
+> 并且**末尾不要加斜杠或路径**（结尾是域名就停）。
+>
+> 想改默认值的话，改 `app/lib/screens/setup_screen.dart` 第 19 行的 `_urlCtrl` 初始值，重新编译即可。
 
-#### 4.4 端到端验证
+填完点提交，App 会调 `/api/register`（或 `/api/login`）拿到 token，然后进入主界面。主界面右上角能看到**电脑守护进程的在线状态** —— 如果显示离线，说明第三部分还没配好。
+
+#### 4.4 端到端验证（可选，但推荐先跑）
 
 ```bash
-# 电脑端自测（本地假中继，不用连真实服务器）
+# 电脑端自测：起一个本地假中继，不用连真实服务器
 python guard/mock_api.py
 
 # 完整链路测试
@@ -410,7 +462,14 @@ python test_e2e.py
 
 | 现象 | 原因与解决 |
 |---|---|
-| 守护进程连不上中继 | ① `COMPUTER_TOKEN` 两端不一致；② `COMPUTER_WS_URL` 协议要写 `wss://`；③ Nginx 未正确升级 WebSocket；④ 中继未配置 `COMPUTER_TOKEN`（会直接拒绝） |
+| 守护进程连不上中继 | ① `COMPUTER_TOKEN` 两端不一致；② `RELAY_WS` 的协议要写 `wss://`（线上）；③ Nginx 没正确升级 WebSocket（少了 `Upgrade` / `Connection` 头）；④ 中继没配 `COMPUTER_TOKEN`（会直接拒绝一切连接） |
+| App 显示「电脑离线」 | 守护进程没起来，或 `RELAY_WS` 写成了 `http://` 而不是 `ws://`/`wss://`；也可能是 CosyVoice API 没启动（守护进程起来了但合成会失败） |
+| App 提示「云端地址错误」 | 地址带了路径或结尾斜杠。正确格式：`https://relay.yourdomain.com` |
+| 注册/登录报 404 | 中继的 Nginx 反代没配好，或者域名没解析到服务器；直接 `curl https://relay.yourdomain.com/api/status` 验证 |
+| 合成请求一直失败 | ① CosyVoice API 没起（`curl http://127.0.0.1:9996/health` 检查）；② `API_BASE` 填错；③ 守护进程的串行队列被前面的任务堵住了 |
+| 音色克隆后没声音 | CosyVoice 的音色注册是内存态，`api.py` 重启就丢。守护进程开机时会自动重注册，但如果 `api.py` 在守护进程之后重启，需要手动重启守护进程 |
+| `flutter pub get` 报 SDK 版本不符 | Flutter 版本太旧。`pubspec.yaml` 要求 Dart `^3.11.4`，需要 Flutter 3.35+ |
+| 显存不够 / CUDA OOM | 见下方"关键工程决策"第 1 节：整体加载必爆显存，必须走分段加载 |
 | App 显示电脑离线 | 守护进程没启动或已被杀；查看 `daemon` 日志里的重连记录 |
 | 合成时报显存错误 | CosyVoice2 整体加载会爆 8GB 显存；确认使用的是分段加载路径（见"关键工程决策"第 1 节） |
 | 首音延迟很长 | 确认是"逐句生成 + 传输并行"而非"全生成完才返回"；检查 `guard/daemon.py` 的 `synthesize_multi` |
