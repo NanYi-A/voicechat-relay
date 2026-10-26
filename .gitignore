@@ -1,0 +1,53 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# Android / Gradle
+.gradle/
+local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+android/app/build/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.log
+
+# 运行时数据与密钥（绝不入库）
+*.db
+*.db-journal
+*.sqlite3
+.env
+.env.*
+.computer_token
+.ctrl_token
+secrets.yaml
+
+# 模型权重与素材（体积大，需自行准备）
+*.pt
+*.pth
+*.onnx
+*.safetensors
+models/
+cosyvoice-env/
+CosyVoice-Enhanced/
+
+# 音频文件（音色样本）
+*.wav
+
+# 说明：app/assets/stickers/ 是用户初始表情包，已压缩后随仓库提交（54MB / 633 文件），
+# 不再排除。若你换成了自己的大体积素材，可用下面这行重新排除：
+# app/assets/stickers/

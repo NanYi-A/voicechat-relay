@@ -1,0 +1,53 @@
+name: voicechat
+description: "安卓语音聊天系统 P0 — 单人跑通端到端"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  path: ^1.9.0
+  dio: ^5.7.0
+  sqflite: ^2.4.1
+  path_provider: ^2.1.4
+  flutter_secure_storage: ^9.2.2
+  just_audio: ^0.10.1
+  crypto: ^3.0.5
+  provider: ^6.1.2
+  file_picker: ^8.1.0
+  flutter_image_compress: ^2.3.0
+  flutter_foreground_task: ^8.17.0
+  flutter_local_notifications: ^18.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/personas/
+    - assets/stickers/angry/
+    - assets/stickers/awkward/
+    - assets/stickers/confirm/
+    - assets/stickers/confused/
+    - assets/stickers/evasive/
+    - assets/stickers/fear/
+    - assets/stickers/goofy/
+    - assets/stickers/happy/
+    - assets/stickers/loved/
+    - assets/stickers/pathead/
+    - assets/stickers/provoke/
+    - assets/stickers/reminded/
+    - assets/stickers/sad/
+    - assets/stickers/shy/
+    - assets/stickers/speechless/
+    - assets/stickers/stare/
+    - assets/stickers/surprised/
+    - assets/stickers/thumbsup/
+    - assets/stickers/tired/

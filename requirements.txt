@@ -1,0 +1,15 @@
+# AI 语音陪聊三端系统 · 依赖
+#
+# ── 云端中继（relay/）────────────────────────────
+#   pip install -r requirements.txt
+#
+# ── 电脑端守护进程（guard/）──────────────────────
+#   pip install requests websocket-client
+#   （CosyVoice2 本身的依赖见官方仓库，本仓库不重复列出）
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+websockets>=12.0
+requests>=2.31
+websocket-client>=1.7
